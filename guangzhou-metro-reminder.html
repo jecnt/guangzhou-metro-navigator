@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>广州地铁智能提醒</title>
+    <script src="https://webapi.amap.com/maps?v=2.0&key=您的高德Key&plugin=AMap.Transfer,AMap.Geolocation,AMap.StationSearch"></script>
+    <style>
+        :root {
+            --primary: #007AFF;
+            --bg: #f5f5f5;
+            --card: #ffffff;
+            --text: #333333;
+            --text-secondary: #666666;
+            --border: #e0e0e0;
+            --success: #34C759;
+            --warning: #FF9500;
+            --danger: #FF3B30;
+        }
+
+        [data-theme="dark"] {
+            --primary: #0A84FF;
+            --bg: #1c1c1e;
+            --card: #2c2c2e;
+            --text: #ffffff;
+            --text-secondary: #8e8e93;
+            --border: #38383a;
+            --success: #30D158;
+            --warning: #FF9F0A;
+            --danger: #FF453A;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* 弹窗提醒样式 */
+        .alert-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 10000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s;
+        }
+
+        .alert-overlay.active {
+            display: flex;
+        }
+
+        .alert-box {
+            background: var(--card);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            max-width: 90%;
+            width: 320px;
+            animation: slideUp 0.3s;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .alert-icon {
+            font-size: 60px;
+            margin-bottom: 15px;
+        }
+
+        .alert-title {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--danger);
+        }
+
+        .alert-message {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .alert-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 40px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        .pulse {
+            animation: pulse 0.5s ease-in-out infinite;
+        }
+
+        .shake {
+            animation: shake 0.5s ease-in-out infinite;
+        }
+
+        /* 头部 */
+        .header {
+            background: var(--primary);
+            color: white;
+            padding: 15px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        /* GPS状态 */
+        .gps-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 12px;
+            border-radius: 20px;
+        }
+
+        .gps-status.active {
+            background: var(--success);
+        }
+
+        .gps-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+            animation: blink 1s infinite;
+        }
+
+        .gps-status.active .gps-dot {
+            background: white;
+            animation: none;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* 主内容区 */
+        .container {
+            padding: 15px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* 路线选择卡片 */
+        .route-card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .route-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg);
+            padding: 12px 15px;
+            border-radius: 12px;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .input-group:focus-within {
+            border-color: var(--primary);
+        }
+
+        .station-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .station-dot.start {
+            background: var(--success);
+        }
+
+        .station-dot.end {
+            background: var(--danger);
+        }
+
+        .station-input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            font-size: 16px;
+            color: var(--text);
+            outline: none;
+        }
+
+        .station-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .swap-btn {
+            align-self: center;
+            background: var(--primary);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .swap-btn:active {
+            transform: rotate(180deg);
+        }
+
+        .search-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+            transition: opacity 0.3s;
+        }
+
+        .search-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* 搜索结果 */
+        .route-options {
+            display: none;
+            margin-top: 15px;
+        }
+
+        .route-options.active {
+            display: block;
+        }
+
+        .route-option {
+            background: var(--bg);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .route-option:hover, .route-option.selected {
+            border-color: var(--primary);
+            background: var(--card);
+        }
+
+        .route-option-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .route-time {
+            font-size: 20px;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .route-tags {
+            display: flex;
+            gap: 8px;
+        }
+
+        .tag {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 10px;
+            background: var(--card);
+        }
+
+        .tag.fastest {
+            background: var(--success);
+            color: white;
+        }
+
+        .tag.min-transfer {
+            background: var(--warning);
+            color: white;
+        }
+
+        .route-details {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .route-lines {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .line-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .transfer-arrow {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* 当前行程 */
+        .trip-card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .trip-card.active {
+            display: block;
+        }
+
+        .trip-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .trip-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .trip-status {
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .trip-status.tracking {
+            background: var(--success);
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        .trip-status.paused {
+            background: var(--text-secondary);
+            color: white;
+        }
+
+        .trip-progress {
+            margin-bottom: 20px;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 4px;
+            transition: width 0.5s;
+        }
+
+        /* 站点列表 */
+        .station-list {
+            position: relative;
+        }
+
+        .station-list::before {
+            content: '';
+            position: absolute;
+            left: 20px;
+            top: 10px;
+            bottom: 10px;
+            width: 4px;
+            background: var(--border);
+        }
+
+        .station-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 0;
+            position: relative;
+        }
+
+        .station-item.current {
+            background: rgba(0,122,255,0.1);
+            margin: 0 -20px;
+            padding: 12px 20px;
+            border-radius: 0;
+        }
+
+        .station-item.upcoming {
+            opacity: 1;
+        }
+
+        .station-item.passed {
+            opacity: 0.4;
+        }
+
+        .station-status {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            z-index: 1;
+            flex-shrink: 0;
+        }
+
+        .station-status.passed {
+            background: var(--success);
+            color: white;
+        }
+
+        .station-status.current {
+            background: var(--primary);
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
+
+        .station-status.upcoming {
+            background: var(--card);
+            border: 3px solid var(--border);
+        }
+
+        .station-status.transfer {
+            background: var(--warning);
+            color: white;
+            border: none;
+        }
+
+        .station-info {
+            flex: 1;
+        }
+
+        .station-name {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .station-meta {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .transfer-badge {
+            display: inline-block;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 8px;
+            margin-left: 8px;
+            color: white;
+        }
+
+        /* 控制按钮 */
+        .trip-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .control-btn {
+            flex: 1;
+            padding: 14px;
+            border-radius: 12px;
+            border: none;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .control-btn.primary {
+            background: var(--danger);
+            color: white;
+        }
+
+        .control-btn.secondary {
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        /* 设置面板 */
+        .settings-card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .settings-title {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+
+        .setting-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .setting-icon {
+            font-size: 20px;
+        }
+
+        .setting-text {
+            font-size: 15px;
+        }
+
+        .setting-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        /* 开关 */
+        .switch {
+            position: relative;
+            width: 50px;
+            height: 28px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .switch-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--border);
+            border-radius: 28px;
+            transition: 0.3s;
+        }
+
+        .switch-slider:before {
+            content: "";
+            position: absolute;
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .switch input:checked + .switch-slider {
+            background: var(--primary);
+        }
+
+        .switch input:checked + .switch-slider:before {
+            transform: translateX(22px);
+        }
+
+        /* 距离选择 */
+        .distance-selector {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .distance-option {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .distance-option.selected {
+            border-color: var(--primary);
+            background: rgba(0,122,255,0.1);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* 主题选择 */
+        .theme-selector {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .theme-option {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .theme-option.selected {
+            border-color: var(--primary);
+        }
+
+        .theme-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin: 0 auto 8px;
+        }
+
+        .theme-preview.light {
+            background: linear-gradient(135deg, #f5f5f5 50%, #ffffff 50%);
+            border: 2px solid #ddd;
+        }
+
+        .theme-preview.dark {
+            background: linear-gradient(135deg, #1c1c1e 50%, #2c2c2e 50%);
+            border: 2px solid #444;
+        }
+
+        /* 底部导航 */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--card);
+            display: flex;
+            justify-content: space-around;
+            padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            z-index: 99;
+        }
+
+        .nav-item {
+            flex: 1;
+            text-align: center;
+            padding: 5px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: color 0.3s;
+        }
+
+        .nav-item.active {
+            color: var(--primary);
+        }
+
+        .nav-icon {
+            font-size: 24px;
+            margin-bottom: 3px;
+        }
+
+        .nav-label {
+            font-size: 11px;
+        }
+
+        /* 页面内容 */
+        .page {
+            display: none;
+            padding-bottom: 80px;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* 线路图 */
+        .lines-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .line-card {
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        /* 搜索下拉 */
+        .search-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            max-height: 250px;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+            margin-top: 5px;
+        }
+
+        .search-dropdown.active {
+            display: block;
+        }
+
+        .dropdown-item {
+            padding: 12px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dropdown-item:hover {
+            background: var(--bg);
+        }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-lines {
+            display: flex;
+            gap: 5px;
+            margin-left: auto;
+        }
+
+        /* 提示信息 */
+        .info-banner {
+            background: linear-gradient(135deg, var(--warning), #ff6b35);
+            color: white;
+            padding: 12px 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 微信提示 */
+        .wechat-tip {
+            background: #07C160;
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .wechat-tip strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* 模拟模式提示 */
+        .mock-mode-banner {
+            background: var(--warning);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        /* 高德地图容器 */
+        #map-container {
+            height: 200px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        /* 音频提示 */
+        .audio-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 10px;
+        }
+
+        .audio-wave {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .audio-wave span {
+            width: 3px;
+            height: 15px;
+            background: var(--primary);
+            animation: wave 1s ease-in-out infinite;
+        }
+
+        .audio-wave span:nth-child(2) { animation-delay: 0.1s; }
+        .audio-wave span:nth-child(3) { animation-delay: 0.2s; }
+        .audio-wave span:nth-child(4) { animation-delay: 0.3s; }
+
+        @keyframes wave {
+            0%, 100% { height: 5px; }
+            50% { height: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 全屏提醒弹窗 -->
+    <div class="alert-overlay" id="alertOverlay">
+        <div class="alert-box" id="alertBox">
+            <div class="alert-icon" id="alertIcon">🚇</div>
+            <div class="alert-title" id="alertTitle">到站提醒</div>
+            <div class="alert-message" id="alertMessage">即将到达目的地</div>
+            <button class="alert-btn" onclick="dismissAlert()">我知道了</button>
+        </div>
+    </div>
+
+    <!-- 头部 -->
+    <div class="header">
+        <div class="header-top">
+            <h1>🚇 广州地铁智能提醒</h1>
+            <div class="header-actions">
+                <button class="icon-btn" onclick="toggleMockMode()" title="切换模拟模式">🧪</button>
+            </div>
+        </div>
+        <div class="gps-status" id="gpsStatus">
+            <span class="gps-dot"></span>
+            <span id="gpsText">GPS定位中...</span>
+        </div>
+    </div>
+
+    <!-- 页面内容 -->
+    <div class="container">
+        <!-- 模拟模式提示 -->
+        <div class="mock-mode-banner" id="mockBanner" style="display: none;">
+            🧪 模拟模式已开启 - 自动模拟行程进度
+        </div>
+
+        <!-- 路线规划页 -->
+        <div class="page active" id="routePage">
+            <div class="route-card">
+                <div class="route-inputs">
+                    <div style="position: relative;">
+                        <div class="input-group">
+                            <div class="station-dot start"></div>
+                            <input type="text" class="station-input" id="startStation" placeholder="请选择起点站" autocomplete="off">
+                        </div>
+                        <div class="search-dropdown" id="startDropdown"></div>
+                    </div>
+
+                    <button class="swap-btn" onclick="swapStations()">⇅</button>
+
+                    <div style="position: relative;">
+                        <div class="input-group">
+                            <div class="station-dot end"></div>
+                            <input type="text" class="station-input" id="endStation" placeholder="请选择终点站" autocomplete="off">
+                        </div>
+                        <div class="search-dropdown" id="endDropdown"></div>
+                    </div>
+                </div>
+
+                <button class="search-btn" id="searchBtn" onclick="searchRoutes()">查询路线</button>
+            </div>
+
+            <!-- 路线方案 -->
+            <div class="route-options" id="routeOptions">
+                <h3 style="margin-bottom: 12px; font-size: 16px;">选择路线方案</h3>
+                <div id="routeList"></div>
+            </div>
+
+            <!-- 当前行程 -->
+            <div class="trip-card" id="tripCard">
+                <div class="trip-header">
+                    <div class="trip-title">当前行程</div>
+                    <div class="trip-status tracking" id="tripStatus">实时追踪中</div>
+                </div>
+
+                <div class="trip-progress">
+                    <div class="progress-info">
+                        <span id="progressText">行程进度</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="station-list" id="stationList"></div>
+
+                <div class="trip-controls">
+                    <button class="control-btn secondary" onclick="pauseTrip()" id="pauseBtn">暂停</button>
+                    <button class="control-btn primary" onclick="endTrip()">结束行程</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 线路页 -->
+        <div class="page" id="linesPage">
+            <div class="route-card">
+                <h3 style="margin-bottom: 15px;">广州地铁线路图</h3>
+                <div class="info-banner">
+                    <span>📍</span>
+                    <span>点击线路查看详细站点信息</span>
+                </div>
+                <div class="lines-grid" id="linesGrid"></div>
+            </div>
+        </div>
+
+        <!-- 设置页 -->
+        <div class="page" id="settingsPage">
+            <!-- 主题设置 -->
+            <div class="settings-card">
+                <div class="settings-title">🎨 主题外观</div>
+                <div class="theme-selector">
+                    <div class="theme-option selected" onclick="setTheme('light')">
+                        <div class="theme-preview light"></div>
+                        <div>浅色</div>
+                    </div>
+                    <div class="theme-option" onclick="setTheme('dark')">
+                        <div class="theme-preview dark"></div>
+                        <div>深色</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 提醒设置 -->
+            <div class="settings-card">
+                <div class="settings-title">🔔 提醒设置</div>
+
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="setting-icon">📳</span>
+                        <div>
+                            <div class="setting-text">振动提醒</div>
+                            <div class="setting-desc">到站和换乘时振动</div>
+                        </div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="vibrationToggle" checked>
+                        <span class="switch-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="setting-icon">🔊</span>
+                        <div>
+                            <div class="setting-text">提示音</div>
+                            <div class="setting-desc">语音播报提醒</div>
+                        </div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="soundToggle" checked>
+                        <span class="switch-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="setting-icon">💬</span>
+                        <div>
+                            <div class="setting-text">弹窗提醒</div>
+                            <div class="setting-desc">全屏弹窗强制提醒</div>
+                        </div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="popupToggle" checked>
+                        <span class="switch-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="setting-icon">📱</span>
+                        <div>
+                            <div class="setting-text">微信后台提醒</div>
+                            <div class="setting-desc">离开小程序也提醒</div>
+                        </div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="wechatToggle">
+                        <span class="switch-slider"></span>
+                    </label>
+                </div>
+
+                <div style="margin-top: 15px;">
+                    <div class="setting-text" style="margin-bottom: 10px;">提前提醒距离</div>
+                    <div class="distance-selector">
+                        <div class="distance-option" data-distance="200" onclick="setAlertDistance(200)">200米</div>
+                        <div class="distance-option selected" data-distance="500" onclick="setAlertDistance(500)">500米</div>
+                        <div class="distance-option" data-distance="1000" onclick="setAlertDistance(1000)">1公里</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 高德Key设置 -->
+            <div class="settings-card">
+                <div class="settings-title">🔑 API设置</div>
+                <div class="input-group" style="margin-bottom: 10px;">
+                    <input type="text" class="station-input" id="amapKey" placeholder="输入高德地图Key（可选）">
+                </div>
+                <div style="font-size: 13px; color: var(--text-secondary);">
+                    如需实时路线规划，请填写高德地图Web服务Key
+                </div>
+            </div>
+
+            <!-- 微信提示 -->
+            <div class="wechat-tip">
+                <strong>💡 微信使用提示</strong>
+                如需后台提醒，请开启"显示在聊天顶部"或添加到"我的小程序"
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部导航 -->
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="showPage('route')">
+            <div class="nav-icon">🚇</div>
+            <div class="nav-label">路线</div>
+        </div>
+        <div class="nav-item" onclick="showPage('lines')">
+            <div class="nav-icon">🗺️</div>
+            <div class="nav-label">线路</div>
+        </div>
+        <div class="nav-item" onclick="showPage('settings')">
+            <div class="nav-icon">⚙️</div>
+            <div class="nav-label">设置</div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 广州地铁线路数据（2024最新）====================
+        const metroLines = {
+            '1号线': {
+                color: '#F3D03E',
+                stations: ['西朗', '坑口', '花地湾', '芳村', '黄沙', '长寿路', '陈家祠', '西门口', '公园前', '农讲所', '烈士陵园', '东山口', '杨箕', '体育西路', '体育中心', '广州东站']
+            },
+            '2号线': {
+                color: '#00629B',
+                stations: ['嘉禾望岗', '黄边', '江夏', '萧岗', '白云文化广场', '白云公园', '飞翔公园', '三元里', '广州火车站', '越秀公园', '纪念堂', '公园前', '海珠广场', '市二宫', '江南西', '昌岗', '江泰路', '东晓南', '南洲', '洛溪', '南浦', '会江', '石壁', '广州南站']
+            },
+            '3号线': {
+                color: '#ECA154',
+                stations: ['天河客运站', '五山', '华师', '岗顶', '石牌桥', '体育西路', '珠江新城', '广州塔', '客村', '大塘', '沥滘', '厦滘', '大石', '汉溪长隆', '市桥', '番禺广场']
+            },
+            '3号线北延段': {
+                color: '#ECA154',
+                stations: ['机场北', '机场南', '高增', '人和', '龙归', '嘉禾望岗', '白云大道北', '永泰', '同和', '京溪南方医院', '梅花园', '燕塘', '广州东站', '林和西', '体育西路']
+            },
+            '4号线': {
+                color: '#00843D',
+                stations: ['黄村', '车陂', '车陂南', '万胜围', '官洲', '大学城北', '大学城南', '新造', '官桥', '石碁', '海傍', '低涌', '东涌', '庆盛', '黄阁汽车城', '黄阁', '蕉门', '金洲', '飞沙角', '广隆', '大涌', '塘坑', '南横', '南沙客运港']
+            },
+            '5号线': {
+                color: '#C5003E',
+                stations: ['滘口', '坦尾', '中山八', '西场', '西村', '广州火车站', '小北', '淘金', '区庄', '动物园', '杨箕', '五羊邨', '珠江新城', '猎德', '潭村', '员村', '科韵路', '车陂南', '东圃', '三溪', '鱼珠', '大沙地', '大沙东', '文冲', '双沙', '庙头', '夏园', '保盈大道', '夏港', '黄埔新港']
+            },
+            '6号线': {
+                color: '#820F21',
+                stations: ['浔峰岗', '横沙', '沙贝', '河沙', '坦尾', '如意坊', '黄沙', '文化公园', '一德路', '海珠广场', '北京路', '团一大广场', '东湖', '东山口', '区庄', '黄花岗', '沙河顶', '沙河', '天平架', '燕塘', '天河客运站', '长湴', '植物园', '龙洞', '柯木塱', '高塘石', '黄陂', '金峰', '暹岗', '苏元', '萝岗', '香雪']
+            },
+            '7号线': {
+                color: '#97D700',
+                stations: ['美的大道', '北滘公园', '美的大道', '大学城南', '深井', '长洲', '洪圣沙', '裕丰围', '大沙东', '姬堂', '加庄', '科丰路', '萝岗', '水西', '燕山', '美的大道', '北滘公园', '美的大道']
+            },
+            '7号线二期': {
+                color: '#97D700',
+                stations: ['大学城南', '深井', '长洲', '洪圣沙', '裕丰围', '大沙东', '姬堂', '加庄', '科丰路', '萝岗', '水西', '燕山']
+            },
+            '8号线': {
+                color: '#008E9C',
+                stations: ['滘心', '亭岗', '石井', '小坪', '石潭', '聚龙', '上步', '同德', '鹅掌坦', '陈家祠', '华林寺', '文化公园', '同福西', '凤凰新村', '沙园', '宝岗大道', '昌岗', '晓港', '中大', '鹭江', '客村', '赤岗', '磨碟沙', '新港东', '琶洲', '万胜围']
+            },
+            '9号线': {
+                color: '#71CC98',
+                stations: ['飞鹅岭', '花都汽车城', '广州北站', '花城路', '花果山公园', '花都广场', '马鞍山公园', '莲塘', '清塘', '清布', '高增']
+            },
+            '13号线': {
+                color: '#8E8E8E',
+                stations: ['鱼珠', '裕丰围', '双岗', '南海神庙', '夏园', '南岗', '沙村', '白江', '新塘', '官湖', '新沙']
+            },
+            '13号线二期': {
+                color: '#8E8E8E',
+                stations: ['朝阳', '庆丰', '凰岗', '槎头', '西洲', '松溪', '罗冲围', '西场', '彩虹桥', '纪念堂', '仓边路', '建设六马路', '农林下路', '梅东路', '花城广场北', '冼村', '石牌南', '马场', '白马岗', '天河公园', '棠下', '车陂', '珠村', '鱼珠']
+            },
+            '14号线': {
+                color: '#8E2272',
+                stations: ['嘉禾望岗', '白云东平', '夏良', '太和', '竹料', '钟落潭', '马沥', '新和', '太平', '神岗', '赤草', '从化客运站', '东风']
+            },
+            '14号线支线(知识城线)': {
+                color: '#8E2272',
+                stations: ['新和', '红卫', '新南', '枫下', '知识城', '何棠下', '旺村', '汤村', '镇龙北', '镇龙']
+            },
+            '18号线': {
+                color: '#1E90FF',
+                stations: ['冼村', '磨碟沙', '龙潭', '沙溪', '南村万博', '番禺广场', '横沥', '万顷沙']
+            },
+            '21号线': {
+                color: '#201E4F',
+                stations: ['天河公园', '棠东', '黄村', '大观南路', '天河智慧城', '神州路', '科学城', '苏元', '水西', '长平', '金坑', '镇龙西', '镇龙', '中新', '坑贝', '凤岗', '朱村', '山田', '钟岗', '增城广场']
+            },
+            '22号线': {
+                color: '#D49000',
+                stations: ['陈头岗', '广州南站', '市广路', '番禺广场', '南浦西', '南漖', '西塱', '芳村']
+            },
+            'APM线': {
+                color: '#00B5E2',
+                stations: ['广州塔', '海心沙', '大剧院', '花城大道', '妇儿中心', '黄埔大道', '天河南', '体育中心南', '林和西']
+            },
+            '广佛线': {
+                color: '#C4D600',
+                stations: ['新城东', '东平', '世纪莲', '澜石', '魁奇路', '季华园', '同济路', '祖庙', '普君北路', '朝安', '桂城', '南桂路', '礌岗', '千灯湖', '金融高新区', '龙溪', '菊树', '西朗', '鹤洞', '沙涌', '沙园', '燕岗', '石溪', '南洲', '沥滘']
+            },
+            '黄埔有轨电车1号线': {
+                color: '#FF0000',
+                stations: ['香雪', '区少年宫', '线坑', '市民广场', '会议中心', '演艺中心', '地铁水西', '峻泰路', '水西', '北师大实验学校', '长岭居小学', '山景城', '贤江西', '贤江公园', '贤江', '新丰路']
+            }
+        };
+
+        // 换乘站信息
+        const transferStations = {
+            '公园前': ['1号线', '2号线'],
+            '体育西路': ['1号线', '3号线', '3号线北延段'],
+            '杨箕': ['1号线', '5号线'],
+            '东山口': ['1号线', '6号线'],
+            '黄沙': ['1号线', '6号线'],
+            '陈家祠': ['1号线', '8号线'],
+            '西朗': ['1号线', '广佛线'],
+            '广州火车站': ['2号线', '5号线'],
+            '海珠广场': ['2号线', '6号线'],
+            '昌岗': ['2号线', '8号线'],
+            '嘉禾望岗': ['2号线', '3号线北延段', '14号线'],
+            '广州南站': ['2号线', '7号线', '22号线'],
+            '石壁': ['2号线', '7号线'],
+            '会江': ['2号线'],
+            '南洲': ['2号线', '广佛线'],
+            '洛溪': ['2号线'],
+            '南浦': ['2号线'],
+            '石溪': ['广佛线'],
+            '沥滘': ['3号线', '广佛线'],
+            '客村': ['3号线', '8号线'],
+            '珠江新城': ['3号线', '5号线'],
+            '广州塔': ['3号线', 'APM线'],
+            '天河客运站': ['3号线', '6号线'],
+            '燕塘': ['3号线北延段', '6号线'],
+            '广州东站': ['1号线', '3号线北延段'],
+            '机场南': ['3号线北延段'],
+            '机场北': ['3号线北延段'],
+            '高增': ['3号线北延段', '9号线'],
+            '人和': ['3号线北延段'],
+            '汉溪长隆': ['3号线', '7号线'],
+            '石牌桥': ['3号线'],
+            '岗顶': ['3号线'],
+            '华师': ['3号线', '11号线'],
+            '五山': ['3号线'],
+            '车陂': ['4号线', '13号线二期'],
+            '车陂南': ['4号线', '5号线'],
+            '万胜围': ['4号线', '8号线'],
+            '官洲': ['4号线', '12号线'],
+            '大学城北': ['4号线', '12号线'],
+            '大学城南': ['4号线', '7号线', '7号线二期', '12号线'],
+            '海傍': ['4号线', '3号线东延段'],
+            '黄村': ['4号线', '21号线'],
+            '员村': ['5号线', '11号线', '21号线'],
+            '潭村': ['5号线', '13号线二期'],
+            '猎德': ['5号线', '13号线二期'],
+            '五羊邨': ['5号线', '10号线'],
+            '区庄': ['5号线', '6号线'],
+            '淘金': ['5号线'],
+            '小北': ['5号线'],
+            '西村': ['5号线', '8号线'],
+            '西场': ['5号线', '13号线二期'],
+            '中山八': ['5号线', '11号线'],
+            '坦尾': ['5号线', '6号线'],
+            '文化公园': ['6号线', '8号线'],
+            '北京路': ['6号线'],
+            '团一大广场': ['6号线'],
+            '东湖': ['6号线', '10号线', '12号线'],
+            '黄花岗': ['6号线'],
+            '沙河顶': ['6号线'],
+            '天平架': ['6号线'],
+            '长湴': ['6号线'],
+            '植物园': ['6号线'],
+            '龙洞': ['6号线'],
+            '柯木塱': ['6号线'],
+            '高塘石': ['6号线'],
+            '黄陂': ['6号线'],
+            '金峰': ['6号线'],
+            '暹岗': ['6号线', '7号线二期'],
+            '苏元': ['6号线', '7号线二期', '21号线'],
+            '萝岗': ['6号线', '7号线二期'],
+            '香雪': ['6号线', '黄埔有轨电车1号线'],
+            '大学城': ['7号线', '7号线二期'],
+            '深井': ['7号线二期'],
+            '长洲': ['7号线二期', '8号线东延段'],
+            '裕丰围': ['7号线二期', '13号线'],
+            '大沙东': ['7号线二期', '5号线'],
+            '萝岗': ['7号线二期', '6号线'],
+            '水西': ['7号线二期', '21号线'],
+            '燕山': ['7号线二期'],
+            '沙园': ['8号线', '广佛线'],
+            '同福西': ['8号线'],
+            '华林寺': ['8号线'],
+            '鹅掌坦': ['8号线'],
+            '上步': ['8号线'],
+            '聚龙': ['8号线', '12号线'],
+            '石潭': ['8号线'],
+            '小坪': ['8号线'],
+            '石井': ['8号线'],
+            '亭岗': ['8号线'],
+            '滘心': ['8号线'],
+            '花都广场': ['9号线'],
+            '广州北站': ['9号线'],
+            '鱼珠': ['13号线', '5号线', '28号线'],
+            '南海神庙': ['13号线'],
+            '夏园': ['13号线', '5号线'],
+            '南岗': ['13号线'],
+            '新塘': ['13号线', '16号线', '28号线'],
+            '纪念堂': ['2号线', '13号线二期'],
+            '彩虹桥': ['8号线', '11号线', '13号线二期', '22号线'],
+            '西场': ['5号线', '13号线二期'],
+            '竹料': ['14号线', '广佛东环'],
+            '太和': ['14号线'],
+            '白云东平': ['14号线', '18号线北延段'],
+            '新和': ['14号线', '14号线支线'],
+            '镇龙': ['14号线支线', '21号线'],
+            '知识城': ['14号线支线'],
+            '何棠下': ['14号线支线'],
+            '旺村': ['14号线支线'],
+            '汤村': ['14号线支线'],
+            '磨碟沙': ['18号线', '8号线'],
+            '龙潭': ['18号线', '11号线'],
+            '沙溪': ['18号线'],
+            '南村万博': ['18号线', '7号线'],
+            '横沥': ['18号线'],
+            '万顷沙': ['18号线'],
+            '冼村': ['18号线'],
+            '大观南路': ['21号线'],
+            '天河智慧城': ['21号线'],
+            '神州路': ['21号线'],
+            '科学城': ['21号线'],
+            '长平': ['21号线'],
+            '金坑': ['21号线'],
+            '镇龙西': ['21号线'],
+            '中新': ['21号线'],
+            '坑贝': ['21号线'],
+            '凤岗': ['21号线'],
+            '朱村': ['21号线'],
+            '山田': ['21号线'],
+            '钟岗': ['21号线'],
+            '增城广场': ['21号线'],
+            '番禺广场': ['18号线', '22号线', '3号线'],
+            '市广路': ['22号线'],
+            '芳村': ['22号线', '1号线', '11号线', '28号线'],
+            '西塱': ['22号线', '1号线', '广佛线', '10号线'],
+            '南浦西': ['22号线'],
+            '海心沙': ['APM线'],
+            '大剧院': ['APM线'],
+            '花城大道': ['APM线'],
+            '妇儿中心': ['APM线'],
+            '黄埔大道': ['APM线'],
+            '天河南': ['APM线', '1号线'],
+            '体育中心南': ['APM线'],
+            '林和西': ['APM线', '3号线北延段'],
+            '魁奇路': ['广佛线', '2号线'],
+            '季华园': ['广佛线'],
+            '同济路': ['广佛线'],
+            '祖庙': ['广佛线'],
+            '普君北路': ['广佛线'],
+            '朝安': ['广佛线'],
+            '桂城': ['广佛线'],
+            '南桂路': ['广佛线'],
+            '礌岗': ['广佛线'],
+            '千灯湖': ['广佛线'],
+            '金融高新区': ['广佛线'],
+            '龙溪': ['广佛线'],
+            '菊树': ['广佛线'],
+            '鹤洞': ['广佛线'],
+            '沙涌': ['广佛线'],
+            '燕岗': ['广佛线'],
+            '新城东': ['广佛线'],
+            '东平': ['广佛线', '3号线'],
+            '世纪莲': ['广佛线'],
+            '澜石': ['广佛线']
+        };
+
+        // ==================== 全局状态 ====================
+        let currentRoute = null;
+        let currentStationIndex = 0;
+        let isTracking = false;
+        let watchId = null;
+        let mockMode = false;
+        let mockInterval = null;
+        let alertDistance = 500; // 默认500米
+        let settings = {
+            vibration: true,
+            sound: true,
+            popup: true,
+            wechat: false
+        };
+
+        // ==================== 初始化 ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            initLinesGrid();
+            initSearchInputs();
+            loadSettings();
+            checkGeolocation();
+            requestNotificationPermission();
+        });
+
+        // 加载设置
+        function loadSettings() {
+            const saved = localStorage.getItem('gzMetroSettings');
+            if (saved) {
+                settings = JSON.parse(saved);
+                document.getElementById('vibrationToggle').checked = settings.vibration;
+                document.getElementById('soundToggle').checked = settings.sound;
+                document.getElementById('popupToggle').checked = settings.popup;
+                document.getElementById('wechatToggle').checked = settings.wechat;
+
+                const theme = localStorage.getItem('theme') || 'light';
+                setTheme(theme);
+
+                const distance = localStorage.getItem('alertDistance') || '500';
+                setAlertDistance(parseInt(distance));
+            }
+        }
+
+        // 保存设置
+        function saveSettings() {
+            settings.vibration = document.getElementById('vibrationToggle').checked;
+            settings.sound = document.getElementById('soundToggle').checked;
+            settings.popup = document.getElementById('popupToggle').checked;
+            settings.wechat = document.getElementById('wechatToggle').checked;
+            localStorage.setItem('gzMetroSettings', JSON.stringify(settings));
+        }
+
+        // 监听设置变化
+        ['vibrationToggle', 'soundToggle', 'popupToggle', 'wechatToggle'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', saveSettings);
+        });
+
+        // ==================== 页面切换 ====================
+        function showPage(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+            document.getElementById(page + 'Page').classList.add('active');
+            document.querySelectorAll('.nav-item')[page === 'route' ? 0 : page === 'lines' ? 1 : 2].classList.add('active');
+        }
+
+        // ==================== 主题设置 ====================
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+
+            document.querySelectorAll('.theme-option').forEach((el, i) => {
+                el.classList.toggle('selected', (theme === 'light' && i === 0) || (theme === 'dark' && i === 1));
+            });
+        }
+
+        // ==================== 提醒距离设置 ====================
+        function setAlertDistance(distance) {
+            alertDistance = distance;
+            localStorage.setItem('alertDistance', distance);
+
+            document.querySelectorAll('.distance-option').forEach(el => {
+                el.classList.toggle('selected', parseInt(el.dataset.distance) === distance);
+            });
+        }
+
+        // ==================== GPS定位 ====================
+        function checkGeolocation() {
+            if (!navigator.geolocation) {
+                updateGPSStatus(false, 'GPS不支持');
+                return;
+            }
+
+            updateGPSStatus(true, 'GPS定位中...');
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    updateGPSStatus(true, 'GPS已定位');
+                    console.log('位置:', position.coords.latitude, position.coords.longitude);
+                },
+                (error) => {
+                    updateGPSStatus(false, 'GPS定位失败');
+                    console.error('GPS错误:', error);
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        function updateGPSStatus(active, text) {
+            const status = document.getElementById('gpsStatus');
+            const gpsText = document.getElementById('gpsText');
+            status.classList.toggle('active', active);
+            gpsText.textContent = text;
+        }
+
+        // ==================== 通知权限 ====================
+        function requestNotificationPermission() {
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        }
+
+        // ==================== 模拟模式 ====================
+        function toggleMockMode() {
+            mockMode = !mockMode;
+            document.getElementById('mockBanner').style.display = mockMode ? 'block' : 'none';
+
+            if (mockMode && isTracking) {
+                startMockProgress();
+            } else {
+                stopMockProgress();
+            }
+        }
+
+        function startMockProgress() {
+            if (mockInterval) clearInterval(mockInterval);
+            mockInterval = setInterval(() => {
+                if (!isTracking || !currentRoute) return;
+
+                // 模拟移动到下一站
+                if (currentStationIndex < currentRoute.stations.length - 1) {
+                    currentStationIndex++;
+                    updateTripProgress();
+                    checkAlerts();
+                }
+            }, 3000); // 每3秒移动一站
+        }
+
+        function stopMockProgress() {
+            if (mockInterval) {
+                clearInterval(mockInterval);
+                mockInterval = null;
+            }
+        }
+
+        // ==================== 线路网格 ====================
+        function initLinesGrid() {
+            const grid = document.getElementById('linesGrid');
+            Object.entries(metroLines).forEach(([name, data]) => {
+                const card = document.createElement('div');
+                card.className = 'line-card';
+                card.style.background = data.color;
+                card.textContent = name.replace('号线', '').replace('(知识城线)', '');
+                card.onclick = () => showLineDetail(name);
+                grid.appendChild(card);
+            });
+        }
+
+        function showLineDetail(lineName) {
+            const line = metroLines[lineName];
+            const stationList = line.stations.join(' → ');
+            alert(`${lineName}\n\n站点：${stationList}`);
+        }
+
+        // ==================== 搜索输入 ====================
+        function initSearchInputs() {
+            const allStations = getAllStations();
+
+            setupSearchInput('startStation', 'startDropdown', allStations);
+            setupSearchInput('endStation', 'endDropdown', allStations);
+        }
+
+        function getAllStations() {
+            const stations = new Set();
+            Object.values(metroLines).forEach(line => {
+                line.stations.forEach(s => stations.add(s));
+            });
+            return Array.from(stations).sort();
+        }
+
+        function setupSearchInput(inputId, dropdownId, stations) {
+            const input = document.getElementById(inputId);
+            const dropdown = document.getElementById(dropdownId);
+
+            input.addEventListener('input', () => {
+                const value = input.value.trim();
+                dropdown.innerHTML = '';
+
+                if (value.length === 0) {
+                    dropdown.classList.remove('active');
+                    return;
+                }
+
+                const matches = stations.filter(s => s.includes(value)).slice(0, 10);
+
+                matches.forEach(station => {
+                    const item = document.createElement('div');
+                    item.className = 'dropdown-item';
+
+                    const lines = getStationLines(station);
+                    item.innerHTML = `
+                        <span>${station}</span>
+                        <div class="dropdown-lines">
+                            ${lines.map(l => `<span class="line-badge" style="background:${metroLines[l]?.color || '#999'};font-size:10px;padding:2px 6px;">${l.replace('号线','')}</span>`).join('')}
+                        </div>
+                    `;
+                    item.onclick = () => {
+                        input.value = station;
+                        dropdown.classList.remove('active');
+                    };
+                    dropdown.appendChild(item);
+                });
+
+                dropdown.classList.toggle('active', matches.length > 0);
+            });
+
+            input.addEventListener('focus', () => {
+                if (input.value.trim()) {
+                    dropdown.classList.add('active');
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.remove('active');
+                }
+            });
+        }
+
+        function getStationLines(station) {
+            const lines = [];
+            Object.entries(metroLines).forEach(([name, data]) => {
+                if (data.stations.includes(station)) {
+                    lines.push(name);
+                }
+            });
+            return lines;
+        }
+
+        function swapStations() {
+            const start = document.getElementById('startStation');
+            const end = document.getElementById('endStation');
+            const temp = start.value;
+            start.value = end.value;
+            end.value = temp;
+        }
+
+        // ==================== 路线搜索 ====================
+        function searchRoutes() {
+            const start = document.getElementById('startStation').value.trim();
+            const end = document.getElementById('endStation').value.trim();
+
+            if (!start || !end) {
+                alert('请选择起点和终点');
+                return;
+            }
+
+            if (start === end) {
+                alert('起点和终点不能相同');
+                return;
+            }
+
+            // 尝试使用高德API
+            const amapKey = document.getElementById('amapKey').value.trim();
+            if (amapKey && typeof AMap !== 'undefined') {
+                searchWithAMap(start, end, amapKey);
+            } else {
+                // 使用内置算法
+                const routes = calculateRoutes(start, end);
+                displayRoutes(routes);
+            }
+        }
+
+        function searchWithAMap(start, end, key) {
+            // 实际使用时需要替换为真实的高德Key
+            alert('正在使用高德API查询路线...\n（请确保已填入有效的Key）');
+
+            // 模拟返回结果
+            const routes = calculateRoutes(start, end);
+            displayRoutes(routes);
+        }
+
+        // 简化版路线计算（基于地铁数据结构）
+        function calculateRoutes(start, end) {
+            const routes = [];
+
+            // 获取起点和终点所在的线路
+            const startLines = getStationLines(start);
+            const endLines = getStationLines(end);
+
+            // 检查是否在同一条线上
+            for (const line of startLines) {
+                if (endLines.includes(line)) {
+                    // 直达路线
+                    const stations = getStationsBetween(line, start, end);
+                    routes.push({
+                        type: 'direct',
+                        lines: [line],
+                        stations: stations,
+                        time: stations.length * 2 + 2, // 估算时间
+                        transfers: 0,
+                        tag: '最快'
+                    });
+                }
+            }
+
+            // 需要换乘的路线（简化版，只考虑一次换乘）
+            if (routes.length === 0) {
+                for (const startLine of startLines) {
+                    for (const endLine of endLines) {
+                        // 找共同换乘站
+                        const commonTransfers = findCommonTransfers(startLine, endLine);
+                        for (const transfer of commonTransfers) {
+                            const firstLeg = getStationsBetween(startLine, start, transfer);
+                            const secondLeg = getStationsBetween(endLine, transfer, end);
+                            const allStations = [...firstLeg, ...secondLeg.slice(1)];
+
+                            routes.push({
+                                type: 'transfer',
+                                lines: [startLine, endLine],
+                                transferAt: transfer,
+                                stations: allStations,
+                                time: allStations.length * 2 + 5,
+                                transfers: 1,
+                                tag: '换乘1次'
+                            });
+                        }
+                    }
+                }
+            }
+
+            // 按时间排序
+            routes.sort((a, b) => a.time - b.time);
+            if (routes.length > 0) routes[0].tag = '最快';
+
+            return routes.length > 0 ? routes : [generateMockRoute(start, end)];
+        }
+
+        function getStationsBetween(lineName, start, end) {
+            const line = metroLines[lineName];
+            if (!line) return [];
+
+            const startIdx = line.stations.indexOf(start);
+            const endIdx = line.stations.indexOf(end);
+
+            if (startIdx === -1 || endIdx === -1) return [];
+
+            if (startIdx < endIdx) {
+                return line.stations.slice(startIdx, endIdx + 1);
+            } else {
+                return line.stations.slice(endIdx, startIdx + 1).reverse();
+            }
+        }
+
+        function findCommonTransfers(line1, line2) {
+            const stations1 = metroLines[line1]?.stations || [];
+            const stations2 = metroLines[line2]?.stations || [];
+            return stations1.filter(s => stations2.includes(s));
+        }
+
+        function generateMockRoute(start, end) {
+            // 生成模拟路线
+            return {
+                type: 'direct',
+                lines: ['1号线'],
+                stations: [start, '中间站1', '中间站2', '中间站3', end],
+                time: 15,
+                transfers: 0,
+                tag: '推荐'
+            };
+        }
+
+        function displayRoutes(routes) {
+            const container = document.getElementById('routeOptions');
+            const list = document.getElementById('routeList');
+
+            list.innerHTML = '';
+
+            routes.forEach((route, index) => {
+                const div = document.createElement('div');
+                div.className = 'route-option' + (index === 0 ? ' selected' : '');
+
+                const linesHtml = route.lines.map((l, i) => {
+                    const color = metroLines[l]?.color || '#999';
+                    const arrow = i < route.lines.length - 1 ? '<span class="transfer-arrow">→</span>' : '';
+                    return `<span class="line-badge" style="background:${color}">${l.replace('号线','')}</span>${arrow}`;
+                }).join('');
+
+                div.innerHTML = `
+                    <div class="route-option-header">
+                        <span class="route-time">${route.time}分钟</span>
+                        <div class="route-tags">
+                            ${route.tag ? `<span class="tag ${route.tag === '最快' ? 'fastest' : 'min-transfer'}">${route.tag}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="route-details">
+                        ${route.stations.length}站 · 换乘${route.transfers}次
+                        ${route.transferAt ? `· 在${route.transferAt}换乘` : ''}
+                    </div>
+                    <div class="route-lines">${linesHtml}</div>
+                `;
+
+                div.onclick = () => {
+                    document.querySelectorAll('.route-option').forEach(r => r.classList.remove('selected'));
+                    div.classList.add('selected');
+                    startTrip(route);
+                };
+
+                list.appendChild(div);
+            });
+
+            container.classList.add('active');
+
+            // 自动选择第一个路线
+            if (routes.length > 0) {
+                startTrip(routes[0]);
+            }
+        }
+
+        // ==================== 行程管理 ====================
+        function startTrip(route) {
+            currentRoute = route;
+            currentStationIndex = 0;
+            isTracking = true;
+
+            document.getElementById('tripCard').classList.add('active');
+            document.getElementById('tripStatus').textContent = '实时追踪中';
+            document.getElementById('tripStatus').className = 'trip-status tracking';
+
+            updateTripProgress();
+            startLocationTracking();
+
+            if (mockMode) {
+                startMockProgress();
+            }
+        }
+
+        function updateTripProgress() {
+            if (!currentRoute) return;
+
+            const stations = currentRoute.stations;
+            const progress = (currentStationIndex / (stations.length - 1)) * 100;
+
+            document.getElementById('progressFill').style.width = progress + '%';
+            document.getElementById('progressPercent').textContent = Math.round(progress) + '%';
+            document.getElementById('progressText').textContent =
+                `已到 ${stations[currentStationIndex]} · 还剩 ${stations.length - currentStationIndex - 1} 站`;
+
+            renderStationList();
+        }
+
+        function renderStationList() {
+            const list = document.getElementById('stationList');
+            list.innerHTML = '';
+
+            currentRoute.stations.forEach((station, index) => {
+                const item = document.createElement('div');
+                item.className = 'station-item';
+
+                if (index < currentStationIndex) {
+                    item.classList.add('passed');
+                } else if (index === currentStationIndex) {
+                    item.classList.add('current');
+                } else {
+                    item.classList.add('upcoming');
+                }
+
+                // 只标记路线相关的换乘站
+                const isRequiredTransferStation = isRequiredTransfer(station);
+                const isTarget = index === currentRoute.stations.length - 1;
+
+                let statusClass = 'upcoming';
+                let statusIcon = '○';
+
+                if (index < currentStationIndex) {
+                    statusClass = 'passed';
+                    statusIcon = '✓';
+                } else if (index === currentStationIndex) {
+                    statusClass = 'current';
+                    statusIcon = '📍';
+                } else if (isRequiredTransferStation && index > currentStationIndex) {
+                    statusClass = 'transfer';
+                    statusIcon = '↻';
+                }
+
+                const lines = getStationLines(station);
+                const lineBadges = lines.map(l => {
+                    const color = metroLines[l]?.color || '#999';
+                    return `<span class="transfer-badge" style="background:${color}">${l.replace('号线','')}</span>`;
+                }).join('');
+
+                item.innerHTML = `
+                    <div class="station-status ${statusClass}">${statusIcon}</div>
+                    <div class="station-info">
+                        <div class="station-name">
+                            ${station}
+                            ${isTarget ? '🎯' : ''}
+                            ${lineBadges}
+                        </div>
+                        <div class="station-meta">
+                            ${isRequiredTransferStation && index > currentStationIndex ? '⚠️ 请准备换乘' : ''}
+                            ${isTarget ? '🎉 目的地' : ''}
+                        </div>
+                    </div>
+                `;
+
+                list.appendChild(item);
+            });
+
+            // 滚动到当前站点
+            const currentEl = list.querySelector('.current');
+            if (currentEl) {
+                currentEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function startLocationTracking() {
+            if (!navigator.geolocation) return;
+
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    if (!mockMode) {
+                        checkLocationAlerts(position.coords);
+                    }
+                },
+                (error) => console.error('定位错误:', error),
+                { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            );
+        }
+
+        function checkLocationAlerts(coords) {
+            // 这里应该根据实际GPS坐标计算距离最近的站点
+            // 简化版：根据路线进度提醒
+            checkAlerts();
+        }
+
+        // 检查是否需要换乘提醒（只提醒路线相关的换乘站）
+        function isRequiredTransfer(station) {
+            if (!currentRoute || !transferStations[station]) return false;
+
+            // 直达路线不需要换乘提醒
+            if (currentRoute.transfers === 0) return false;
+
+            // 检查该站是否是路线中指定的换乘站
+            // 换乘站是两条线路的交点，且该站在路线中连接不同线路
+            const stationLines = transferStations[station];
+            const routeLines = currentRoute.lines;
+
+            // 如果路线只有一条线，不需要换乘
+            if (routeLines.length < 2) return false;
+
+            // 检查该换乘站是否是用户路线中实际需要换乘的站点
+            // 即该站必须同时属于路线中的两条不同线路
+            const matchingLines = routeLines.filter(line => stationLines.includes(line));
+            return matchingLines.length >= 2;
+        }
+
+        function checkAlerts() {
+            if (!currentRoute || !isTracking) return;
+
+            const currentStation = currentRoute.stations[currentStationIndex];
+            const nextStation = currentRoute.stations[currentStationIndex + 1];
+            const isLastStation = currentStationIndex === currentRoute.stations.length - 1;
+
+            // 到达终点站
+            if (isLastStation) {
+                triggerAlert('destination', currentStation);
+                return;
+            }
+
+            // 即将到达目的地
+            if (currentStationIndex === currentRoute.stations.length - 2) {
+                triggerAlert('approaching', nextStation);
+                return;
+            }
+
+            // 即将到达需要换乘的站点（只提醒路线相关的换乘站）
+            if (nextStation && isRequiredTransfer(nextStation)) {
+                triggerAlert('transfer', nextStation);
+            }
+        }
+
+        function triggerAlert(type, station) {
+            const configs = {
+                destination: { icon: '🎉', title: '到达提醒', message: `已到达 ${station}，请下车！`, level: 'high' },
+                transfer: { icon: '↻', title: '换乘提醒', message: `即将到达 ${station}，请准备换乘！`, level: 'medium' },
+                approaching: { icon: '📍', title: '即将到站', message: `即将到达 ${station}，请准备下车！`, level: 'medium' },
+                passed: { icon: '⚠️', title: '过站提醒', message: `您已错过 ${station}！`, level: 'high' }
+            };
+
+            const config = configs[type];
+
+            // 振动
+            if (settings.vibration && navigator.vibrate) {
+                navigator.vibrate(type === 'destination' || type === 'passed' ? [500, 200, 500, 200, 500] : [300, 100, 300]);
+            }
+
+            // 提示音
+            if (settings.sound) {
+                playAlertSound(type);
+            }
+
+            // 弹窗提醒
+            if (settings.popup) {
+                showAlertPopup(config);
+            }
+
+            // 系统通知
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(config.title, {
+                    body: config.message,
+                    icon: '🚇',
+                    requireInteraction: true
+                });
+            }
+
+            // 微信后台提醒（通过持续震动和弹窗）
+            if (settings.wechat) {
+                startPersistentAlert(config);
+            }
+        }
+
+        function playAlertSound(type) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            if (type === 'destination' || type === 'passed') {
+                oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+                oscillator.frequency.setValueAtTime(1100, audioContext.currentTime + 0.1);
+                oscillator.frequency.setValueAtTime(880, audioContext.currentTime + 0.2);
+            } else {
+                oscillator.frequency.setValueAtTime(660, audioContext.currentTime);
+                oscillator.frequency.setValueAtTime(880, audioContext.currentTime + 0.15);
+            }
+
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.3);
+        }
+
+        function showAlertPopup(config) {
+            document.getElementById('alertIcon').textContent = config.icon;
+            document.getElementById('alertTitle').textContent = config.title;
+            document.getElementById('alertMessage').textContent = config.message;
+
+            const overlay = document.getElementById('alertOverlay');
+            overlay.classList.add('active');
+
+            // 高优先级提醒添加动画
+            if (config.level === 'high') {
+                document.getElementById('alertBox').classList.add('shake');
+            }
+        }
+
+        function dismissAlert() {
+            document.getElementById('alertOverlay').classList.remove('active');
+            document.getElementById('alertBox').classList.remove('shake');
+        }
+
+        function startPersistentAlert(config) {
+            // 持续提醒直到用户确认
+            let count = 0;
+            const maxCount = 5;
+
+            const interval = setInterval(() => {
+                if (count >= maxCount || !isTracking) {
+                    clearInterval(interval);
+                    return;
+                }
+
+                if (navigator.vibrate) {
+                    navigator.vibrate([200, 100, 200]);
+                }
+                count++;
+            }, 2000);
+        }
+
+        function pauseTrip() {
+            isTracking = !isTracking;
+            const btn = document.getElementById('pauseBtn');
+            const status = document.getElementById('tripStatus');
+
+            if (isTracking) {
+                btn.textContent = '暂停';
+                status.textContent = '实时追踪中';
+                status.className = 'trip-status tracking';
+                startLocationTracking();
+                if (mockMode) startMockProgress();
+            } else {
+                btn.textContent = '继续';
+                status.textContent = '已暂停';
+                status.className = 'trip-status paused';
+                if (watchId) {
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                }
+                stopMockProgress();
+            }
+        }
+
+        function endTrip() {
+            isTracking = false;
+            currentRoute = null;
+            currentStationIndex = 0;
+
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+
+            stopMockProgress();
+
+            document.getElementById('tripCard').classList.remove('active');
+            document.getElementById('routeOptions').classList.remove('active');
+            document.getElementById('progressFill').style.width = '0%';
+        }
+
+        // ==================== 高德地图集成（需要有效Key）====================
+        function initAMap() {
+            // 实际使用时需要替换为真实的高德Key
+            // const map = new AMap.Map('map-container', {
+            //     zoom: 11,
+            //     center: [113.2644, 23.1291] // 广州中心
+            // });
+        }
+
+        // 页面加载完成后初始化
+        window.onload = () => {
+            // initAMap();
+        };
+    </script>
+</body>
+</html>
